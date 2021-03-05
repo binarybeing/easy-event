@@ -15,7 +15,7 @@ public class AroundMethod {
 
     private Object[] params;
 
-    private Exception e;
+    private Exception exp;
 
     private Object returnObj;
 
@@ -34,7 +34,7 @@ public class AroundMethod {
     }
 
     public AroundMethod withException(Exception e) {
-        this.e = e;
+        this.exp = e;
         return this;
     }
 
@@ -57,5 +57,9 @@ public class AroundMethod {
 
     public Object[] getParams() {
         return params;
+    }
+
+    public Exception getExp() {
+        return exp;
     }
 }
