@@ -3,9 +3,7 @@ package com.github.binarybeing.easyevent;
 import com.github.binarybeing.easyevent.model.AroundMethod;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.log4j.Logger;
-import org.springframework.beans.BeansException;
 import org.springframework.context.ApplicationContext;
-import org.springframework.context.ApplicationContextAware;
 
 import java.util.List;
 import java.util.Map;
@@ -17,7 +15,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * @Author binarybeing
  * @Date 2021-02-09
  **/
-public final class Consumers implements ApplicationContextAware {
+public final class Consumers {
 
     private static Map<Class<? extends EventConsumer>, EventConsumerProxy> enhancerMap = new ConcurrentHashMap<>();
     private static ApplicationContext springContext;
@@ -81,8 +79,7 @@ public final class Consumers implements ApplicationContextAware {
         }
     }
 
-    @Override
-    public void setApplicationContext(ApplicationContext applicationContext) throws BeansException {
+    static void setApplicationContext(ApplicationContext applicationContext) {
         springContext = applicationContext;
         Set<Class<? extends EventConsumer>> set = enhancerMap.keySet();
         for (Class<? extends EventConsumer> clazz : set) {
