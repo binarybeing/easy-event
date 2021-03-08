@@ -21,6 +21,11 @@ public class MyConsumer implements EventConsumer {
     public void thrown(AroundMethod aroundMethod, Exception e) {
         System.out.println("consume thrown");
     }
+    
+    @Override
+    public Executor executor() {
+        return new ThreadPoolExecutor(4, 8, 1, TimeUnit.MINUTES, new ArrayBlockingQueue<>(100));
+    }
 }
 ```
 
