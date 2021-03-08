@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executor;
 
 /**
  * @Description
@@ -17,7 +18,7 @@ import java.util.concurrent.ConcurrentHashMap;
  **/
 public final class Consumers {
 
-    private static Map<Class<? extends EventConsumer>, EventConsumerProxy> enhancerMap = new ConcurrentHashMap<>();
+    private static Map<Class<? extends EventConsumer>, EventConsumerWrapper> enhancerMap = new ConcurrentHashMap<>();
     private static ApplicationContext springContext;
     private static Logger errorLogger = Logger.getLogger(Consumers.class);
 
@@ -30,7 +31,7 @@ public final class Consumers {
             } catch (InstantiationException | IllegalAccessException e) {
                 errorLogger.warn("clazz.newInstance error " + clazz.getCanonicalName(), e);
             }
-            return new EventConsumerProxy(enhancer) ;
+            return new EventConsumerWrapper(enhancer) ;
         });
     }
 
@@ -40,7 +41,8 @@ public final class Consumers {
         }
         for (EventConsumer consumer : consumers) {
             try {
-                consumer.before(aroundMethod);
+                Runnable runnable = () -> consumer.before(aroundMethod);
+                execute(consumer, runnable);
             } catch (Exception e) {
                 errorLogger.error(
                         "consume before fail, consumer class = " + consumer.getClass() + " target class=" + aroundMethod.getMethodInfo().getDeclaringClass()
@@ -55,7 +57,8 @@ public final class Consumers {
         }
         for (EventConsumer consumer : consumers) {
             try {
-                consumer.after(aroundMethod);
+                Runnable runnable = () -> consumer.after(aroundMethod);
+                execute(consumer, runnable);
             } catch (Exception e) {
                 errorLogger.error(
                         "consume after fail, consumer class = " + consumer.getClass() + " target class=" + aroundMethod.getMethodInfo().getDeclaringClass()
@@ -70,7 +73,8 @@ public final class Consumers {
         }
         for (EventConsumer consumer : consumers) {
             try {
-                consumer.thrown(aroundMethod, exp);
+                Runnable runnable = () -> consumer.thrown(aroundMethod, exp);
+                execute(consumer, runnable);
             } catch (Exception e) {
                 errorLogger.error(
                         "consume thrown fail, consumer class = " + consumer.getClass() + " target class=" + aroundMethod.getMethodInfo().getDeclaringClass()
@@ -79,22 +83,28 @@ public final class Consumers {
         }
     }
 
+    private static void execute(EventConsumer consumer, Runnable runnable) {
+        if (consumer != null && consumer.executor() != null) {
+            consumer.executor().execute(runnable);
+        }
+    }
+
     static void setApplicationContext(ApplicationContext applicationContext) {
         springContext = applicationContext;
         Set<Class<? extends EventConsumer>> set = enhancerMap.keySet();
         for (Class<? extends EventConsumer> clazz : set) {
-            EventConsumerProxy proxy = enhancerMap.get(clazz);
+            EventConsumerWrapper proxy = enhancerMap.get(clazz);
             EventConsumer consumer = springContext.getBean(clazz);
             proxy.setConsumer(consumer);
             enhancerMap.put(clazz, proxy);
         }
     }
 
-    private static class EventConsumerProxy implements EventConsumer{
+    private static class EventConsumerWrapper implements EventConsumer{
 
         private EventConsumer consumer;
 
-        EventConsumerProxy(EventConsumer consumer) {
+        EventConsumerWrapper(EventConsumer consumer) {
             this.consumer = consumer;
         }
 
@@ -120,6 +130,14 @@ public final class Consumers {
                 return;
             }
             consumer.thrown(targetMethod, e);
+        }
+
+        @Override
+        public Executor executor() {
+            if (null == consumer) {
+                return null;
+            }
+            return consumer.executor();
         }
 
         void setConsumer(EventConsumer consumer) {
