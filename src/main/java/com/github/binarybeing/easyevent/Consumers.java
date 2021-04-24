@@ -84,9 +84,14 @@ public final class Consumers {
     }
 
     private static void execute(EventConsumer consumer, Runnable runnable) {
-        if (consumer != null && consumer.executor() != null) {
-            consumer.executor().execute(runnable);
+        if (consumer == null) {
+            return;
         }
+        if (consumer.executor() == null) {
+            runnable.run();
+            return;
+        }
+        consumer.executor().execute(runnable);
     }
 
     static void setApplicationContext(ApplicationContext applicationContext) {

@@ -14,6 +14,8 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.SOURCE)
 public @interface Event {
 
-    Class<? extends EventConsumer>[] value();
+    String name() default "";
+
+    Class<? extends EventConsumer>[] consumers();
 
 }

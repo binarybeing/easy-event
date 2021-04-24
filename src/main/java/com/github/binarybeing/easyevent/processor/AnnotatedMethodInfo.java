@@ -14,6 +14,8 @@ import java.util.Objects;
  **/
 class AnnotatedMethodInfo {
 
+    private String eventName;
+
     private JCTree.JCMethodDecl methodDecl;
 
     private JCTree.JCClassDecl classDecl;
@@ -42,6 +44,14 @@ class AnnotatedMethodInfo {
 
     public void setClassDecl(JCTree.JCClassDecl classDecl) {
         this.classDecl = classDecl;
+    }
+
+    public String getEventName() {
+        return eventName;
+    }
+
+    public void setEventName(String eventName) {
+        this.eventName = eventName;
     }
 
     @Override

@@ -19,6 +19,7 @@ import com.sun.tools.javac.tree.TreeMaker;
 import com.sun.tools.javac.util.Context;
 import com.sun.tools.javac.util.List;
 import com.sun.tools.javac.util.Name;
+import com.sun.tools.javac.util.Names;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.tuple.Pair;
 
@@ -59,6 +60,7 @@ public class AnnotationProcessor extends AbstractProcessor {
     private Messager messager = null;
     private TreeMaker treeMaker = null;
     private String METHOD_TARGET = "$methodTarget";
+    private Names names;
 
     @Override
     public synchronized void init(ProcessingEnvironment processingEnv) {
@@ -69,6 +71,7 @@ public class AnnotationProcessor extends AbstractProcessor {
         this.messager = processingEnv.getMessager();
         final Context context = ((JavacProcessingEnvironment) processingEnv).getContext();
         this.treeMaker = TreeMaker.instance(context);
+        names = Names.instance(context);
     }
 
     @Override
@@ -106,29 +109,25 @@ public class AnnotationProcessor extends AbstractProcessor {
             String theMethodReference = this.createMethodInfo(methodDecl, classDecl);
             String consumerListReference = this.createMethodConsumerList(methodDecl, classDecl, enhancerClasses);
 
-
             JCTree.JCBlock tryBlock = this.tryBlock(notVoidReturn, methodDecl, consumerListReference);
             JCTree.JCCatch catchBlock = this.catchBlock(consumerListReference);
             JCTree.JCBlock finalBlock = this.finalBlock(notVoidReturn, consumerListReference);
 
-
             JCTree.JCTry jcTry = treeMaker.Try(List.nil(), tryBlock, List.of(catchBlock), finalBlock);
-
 
             if (notVoidReturn) {
                 methodDecl.body = treeMaker.Block(0, List.of(
-                        this.methodInfoBuilder(methodDecl, classDecl, theMethodReference),
+                        this.methodInfoBuilder(annotatedMethodInfo, theMethodReference),
                         this.createReturnObj(),
                         jcTry,
                         this.returnResult(returnType))
                 );
             }else {
                 methodDecl.body = treeMaker.Block(0, List.of(
-                        this.methodInfoBuilder(methodDecl, classDecl, theMethodReference),
+                        this.methodInfoBuilder(annotatedMethodInfo, theMethodReference),
                         jcTry)
                 );
             }
-            System.out.println(classDecl);
 
         }
         return true;
@@ -163,12 +162,11 @@ public class AnnotationProcessor extends AbstractProcessor {
         ArrayList<JCTree.JCExpression> params = new ArrayList<>();
 
         String methodReferenceName = classDecl.getSimpleName() + "_" + methodDecl.getName().toString() +"_"+ methodCounter.incrementAndGet();
-
-        params.add(treeMaker.ClassLiteral(classDecl.sym.type));
+        params.add(this.getClassParam(classDecl.sym.type));
         params.add(treeMaker.Literal(methodDecl.name.toString()));
         List<JCTree.JCVariableDecl> parameters = methodDecl.getParameters();
         for (JCTree.JCVariableDecl parameter : parameters) {
-            params.add(treeMaker.ClassLiteral(parameter.sym.type));
+            params.add(this.getClassParam(parameter.sym.type));
         }
 
         JCTree.JCMethodInvocation methodInvocation = treeMaker.Apply(null, this.invokeMethodExpression(getMethod), List.from(params));
@@ -179,6 +177,21 @@ public class AnnotationProcessor extends AbstractProcessor {
 
         classDecl.defs = classDecl.defs.append(methodVarDef);
         return methodReferenceName;
+    }
+
+    private JCTree.JCExpression getClassParam(Type type) {
+        if (type.isPrimitive()) {
+            return treeMaker.ClassLiteral(type);
+        }
+        return memberAccess(type.tsym + ".class");
+    }
+    private JCTree.JCExpression memberAccess(String components) {
+        String[] componentArray = components.split("\\.");
+        JCTree.JCExpression expr = treeMaker.Ident(names.fromString(componentArray[0]));
+        for (int i = 1; i < componentArray.length; i++) {
+            expr = treeMaker.Select(expr, names.fromString(componentArray[i]));
+        }
+        return expr;
     }
 
     private JCTree.JCVariableDecl createReturnObj() {
@@ -206,6 +219,12 @@ public class AnnotationProcessor extends AbstractProcessor {
         List<JCTree.JCTypeParameter> methodGenericParams = target.typarams;
         //参数列表
         List<JCTree.JCVariableDecl> parameters = target.params;
+        ArrayList<JCTree.JCVariableDecl> newParameters = Lists.newArrayListWithExpectedSize(parameters.size());
+        for (JCTree.JCVariableDecl parameter : parameters) {
+            JCTree.JCVariableDecl varDef = treeMaker.VarDef(treeMaker.Modifiers(Flags.PARAMETER), parameter.name, parameter.vartype, null);
+            newParameters.add(varDef);
+        }
+        parameters = List.from(newParameters);
         //异常抛出列表
         List<JCTree.JCExpression> throwsClauses = target.thrown;
         //非自定义注解类中的方法，defaultValue为null
@@ -220,19 +239,28 @@ public class AnnotationProcessor extends AbstractProcessor {
      *
      * @return
      */
-    private JCTree.JCVariableDecl methodInfoBuilder(JCTree.JCMethodDecl methodDecl, JCTree.JCClassDecl classDecl, String theMethodReference) {
+    private JCTree.JCVariableDecl methodInfoBuilder(AnnotatedMethodInfo annotatedMethodInfo, String theMethodReference) {
+        JCTree.JCMethodDecl methodDecl = annotatedMethodInfo.getMethodDecl();
+        JCTree.JCClassDecl classDecl = annotatedMethodInfo.getClassDecl();
+        String eventName = annotatedMethodInfo.getEventName();
+
         ArrayList<JCTree.JCExpression> buildParams = new ArrayList<>();
         buildParams.add(treeMaker.Ident(elementUtils.getName(theMethodReference)));
         buildParams.add(treeMaker.This(classDecl.sym.type));
 
         ArrayList<JCTree.JCExpression> withParamsParams = new ArrayList<>();
+
+        ArrayList<JCTree.JCExpression> paramNames = new ArrayList<>();
         for (JCTree.JCVariableDecl parameter : methodDecl.getParameters()) {
             withParamsParams.add(treeMaker.Ident(parameter.name));
+            paramNames.add(treeMaker.Literal(parameter.name.toString()));
         }
         List<String> aroundMethodBuilder = this.classMethodStringList(AroundMethod.class, "build");
-
         JCTree.JCExpression chainMethodInvocation =
-                this.getChainMethodInvocation(Pair.of(aroundMethodBuilder, List.from(buildParams)), Pair.of(List.of("withParams"), List.from(withParamsParams)));
+                this.getChainMethodInvocation(Pair.of(aroundMethodBuilder, List.from(buildParams)),
+                        Pair.of(List.of("withEventName"), List.of(treeMaker.Literal(eventName==null?"":eventName))),
+                        Pair.of(List.of("withParamsName"), List.from(paramNames)),
+                        Pair.of(List.of("withParams"), List.from(withParamsParams)));
         return treeMaker.VarDef(
                 //访问修饰符
                 treeMaker.Modifiers(Flags.FINAL),
@@ -396,7 +424,7 @@ public class AnnotationProcessor extends AbstractProcessor {
                     annotatedMethodInfo.setClassDecl(jcClassDecl);
                     for (Map.Entry<? extends ExecutableElement, ? extends AnnotationValue> entry : mirror.getElementValues().entrySet()) {
                         ExecutableElement key = entry.getKey();
-                        if ("value".equals(key.getSimpleName().toString())) {
+                        if ("consumers".equals(key.getSimpleName().toString())) {
                             Attribute.Array clazzArray = (Attribute.Array)entry.getValue();
                             for (Attribute value : clazzArray.values) {
                                 Attribute.Class attribute = (Attribute.Class) value;
@@ -404,6 +432,10 @@ public class AnnotationProcessor extends AbstractProcessor {
                                 Symbol.ClassSymbol clazzElement = (Symbol.ClassSymbol)typeUtils.asElement(classType);
                                 annotatedMethodInfo.addEnhancerClasses(clazzElement);
                             }
+                        }
+                        if ("name".equals(key.getSimpleName().toString())) {
+                            AnnotationValue value = entry.getValue();
+                            annotatedMethodInfo.setEventName(value.getValue().toString());
                         }
                     }
                     result.add(annotatedMethodInfo);
