@@ -1,6 +1,6 @@
 # easy-event
 基于JSR269实现的事件驱动组件
-
+image.png![image](https://user-images.githubusercontent.com/79463662/116644930-3d6b3200-a9a7-11eb-9c23-74d4a2dfb2fb.png)
 ---
 ###使用方法
 #### 1.实现EventConsumer接口, 如下
