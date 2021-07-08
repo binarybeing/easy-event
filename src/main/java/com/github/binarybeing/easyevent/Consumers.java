@@ -35,6 +35,14 @@ public final class Consumers {
         });
     }
 
+    static void setConsumer(EventConsumer consumer){
+        EventConsumer eventConsumer = getConsumer(consumer.getClass());
+        if (eventConsumer != null && eventConsumer instanceof EventConsumerWrapper) {
+            EventConsumerWrapper wrapper = (EventConsumerWrapper) eventConsumer;
+            wrapper.setConsumer(consumer);
+        }
+    }
+
     public static void invokeBefore(List<EventConsumer> consumers, AroundMethod aroundMethod) {
         if (CollectionUtils.isEmpty(consumers)) {
             return;
